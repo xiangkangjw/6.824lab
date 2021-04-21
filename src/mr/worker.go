@@ -9,8 +9,6 @@ import (
 	"net/rpc"
 	"os"
 	"sort"
-
-	"6.824/mr"
 )
 
 //
@@ -20,6 +18,14 @@ type KeyValue struct {
 	Key   string
 	Value string
 }
+
+// for sorting by key.
+type ByKey []KeyValue
+
+// for sorting by key.
+func (a ByKey) Len() int           { return len(a) }
+func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 
 //
 // use ihash(key) % NReduce to choose the reduce
@@ -96,16 +102,21 @@ func DoMap(mapf func(string, string) []KeyValue, mapperIndex int, filename strin
 	}
 	file.Close()
 	kva := mapf(filename, string(content))
+	log.Printf("start reading file %s", filename)
 	for _, kv := range kva {
 		index := ihash(kv.Key) % NReduce
 		intermediate[index] = append(intermediate[index], kv)
 	}
 
+	log.Printf("finish reading file")
+
 	// Sort and write file
 	for i, kvs := range intermediate {
-		sort.Sort(mr.ByKey(kvs))
+
+		sort.Sort(ByKey(kvs))
 		oname := fmt.Sprintf("mr-%d-%d", mapperIndex, i)
 		tmpname := fmt.Sprintf("tmp-%d-%d", mapperIndex, i)
+		log.Printf("start writing file %s", oname)
 		path, err := os.Getwd()
 		if err != nil {
 			log.Fatal(err)
@@ -127,6 +138,7 @@ func DoMap(mapf func(string, string) []KeyValue, mapperIndex int, filename strin
 		if err != nil {
 			log.Fatal(err)
 		}
+		log.Printf("finish writing file  %s", oname)
 
 	}
 

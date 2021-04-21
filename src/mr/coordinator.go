@@ -11,12 +11,13 @@ import (
 
 type Coordinator struct {
 	// Your definitions here.
-	mu            sync.Mutex
-	nMapper       int
-	nReducer      int
-	mapperStatus  map[int]bool
+	mu       sync.Mutex
+	nMapper  int
+	nReducer int
+	// 0 -> not started,  1 -> in progress, 2 -> done
+	mapperStatus  map[int]int
 	fileNames     []string
-	reducerStatus map[int]bool
+	reducerStatus map[int]int
 	// need to store map and reduce worker status
 	// need to store all the resulted temporary file locations
 }
@@ -39,12 +40,12 @@ func (c *Coordinator) GetJob(args *GetJobRequest, reply *GetJobResponse) error {
 
 	isMapperDone, isReducerDone := true, true
 	for _, val := range c.mapperStatus {
-		if !val {
+		if val != 2 {
 			isMapperDone = false
 		}
 	}
 	for _, val := range c.reducerStatus {
-		if !val {
+		if val != 2 {
 			isReducerDone = false
 		}
 	}
@@ -53,19 +54,21 @@ func (c *Coordinator) GetJob(args *GetJobRequest, reply *GetJobResponse) error {
 	} else if !isMapperDone {
 		reply.JobType = "mapper"
 		for i := 0; i < len(c.mapperStatus); i++ {
-			if !(c.mapperStatus[i]) {
+			if c.mapperStatus[i] == 0 {
 				reply.MapperIndex = i
 				reply.MapperFileName = c.fileNames[i]
 				reply.NReduce = c.nReducer
+				c.mapperStatus[i] = 1
 				break
 			}
 		}
 	} else {
 		reply.JobType = "reducer"
 		for i, val := range c.reducerStatus {
-			if !val {
+			if val == 0 {
 				reply.ReducerIndex = i
 				reply.NMap = c.nMapper
+				c.reducerStatus[i] = 1
 				break
 			}
 		}
@@ -77,7 +80,7 @@ func (c *Coordinator) CompleteMapper(args *CompleteMapperRequest, reply *Complet
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.mapperStatus[args.MapperIndex] = true
+	c.mapperStatus[args.MapperIndex] = 2
 	return nil
 }
 
@@ -85,7 +88,7 @@ func (c *Coordinator) CompleteReducer(args *CompleteReducerRequest, reply *Compl
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.reducerStatus[args.ReducerIndex] = true
+	c.reducerStatus[args.ReducerIndex] = 2
 	return nil
 }
 
@@ -118,13 +121,13 @@ func (c *Coordinator) Done() bool {
 	defer c.mu.Unlock()
 
 	for _, val := range c.mapperStatus {
-		if !val {
+		if val != 2 {
 			ret = false
 		}
 	}
 
 	for _, val := range c.reducerStatus {
-		if !val {
+		if val != 2 {
 			ret = false
 		}
 	}
@@ -140,18 +143,18 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{
 		nMapper:       len(files),
 		nReducer:      nReduce,
-		reducerStatus: make(map[int]bool),
-		mapperStatus:  make(map[int]bool),
+		reducerStatus: make(map[int]int),
+		mapperStatus:  make(map[int]int),
 	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for i := 0; i < nReduce; i++ {
-		c.reducerStatus[i] = false
+		c.reducerStatus[i] = 0
 	}
 
 	for i, _ := range files {
-		c.mapperStatus[i] = false
+		c.mapperStatus[i] = 0
 	}
 
 	c.fileNames = files
