@@ -9,6 +9,7 @@ import (
 	"net/rpc"
 	"os"
 	"sort"
+	"time"
 )
 
 //
@@ -75,14 +76,18 @@ func CallExample(mapf func(string, string) []KeyValue,
 			DoMap(mapf, reply.MapperIndex, reply.MapperFileName, reply.NReduce)
 		} else if reply.JobType == "reducer" {
 			DoReduce(reducef, reply.ReducerIndex, reply.NMap)
+		} else if reply.ShouldWait {
+			time.Sleep(time.Second * 5)
 		} else {
 			panic("Unexpected reply.")
 		}
+		reply = GetJobResponse{}
 		call("Coordinator.GetJob", &args, &reply)
 	}
 }
 
 func DoMap(mapf func(string, string) []KeyValue, mapperIndex int, filename string, NReduce int) {
+
 	//
 	// read each input file,
 	// pass it to Map,
@@ -102,13 +107,10 @@ func DoMap(mapf func(string, string) []KeyValue, mapperIndex int, filename strin
 	}
 	file.Close()
 	kva := mapf(filename, string(content))
-	log.Printf("start reading file %s", filename)
 	for _, kv := range kva {
 		index := ihash(kv.Key) % NReduce
 		intermediate[index] = append(intermediate[index], kv)
 	}
-
-	log.Printf("finish reading file")
 
 	// Sort and write file
 	for i, kvs := range intermediate {
@@ -116,7 +118,6 @@ func DoMap(mapf func(string, string) []KeyValue, mapperIndex int, filename strin
 		sort.Sort(ByKey(kvs))
 		oname := fmt.Sprintf("mr-%d-%d", mapperIndex, i)
 		tmpname := fmt.Sprintf("tmp-%d-%d", mapperIndex, i)
-		log.Printf("start writing file %s", oname)
 		path, err := os.Getwd()
 		if err != nil {
 			log.Fatal(err)
@@ -138,8 +139,6 @@ func DoMap(mapf func(string, string) []KeyValue, mapperIndex int, filename strin
 		if err != nil {
 			log.Fatal(err)
 		}
-		log.Printf("finish writing file  %s", oname)
-
 	}
 
 	// declare an argument structure.

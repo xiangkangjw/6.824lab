@@ -37,6 +37,7 @@ type GetJobResponse struct {
 	NReduce        int
 	NMap           int
 	IsDone         bool
+	ShouldWait     bool
 }
 
 type CompleteMapperRequest struct {

@@ -7,6 +7,7 @@ import (
 	"net/rpc"
 	"os"
 	"sync"
+	"time"
 )
 
 type Coordinator struct {
@@ -52,27 +53,48 @@ func (c *Coordinator) GetJob(args *GetJobRequest, reply *GetJobResponse) error {
 	if isMapperDone && isReducerDone {
 		reply.IsDone = true
 	} else if !isMapperDone {
-		reply.JobType = "mapper"
 		for i := 0; i < len(c.mapperStatus); i++ {
 			if c.mapperStatus[i] == 0 {
+				reply.JobType = "mapper"
 				reply.MapperIndex = i
 				reply.MapperFileName = c.fileNames[i]
 				reply.NReduce = c.nReducer
 				c.mapperStatus[i] = 1
+
+				go func(mapIndex int, c *Coordinator) {
+					time.Sleep(time.Second * 5)
+					c.mu.Lock()
+					defer c.mu.Unlock()
+
+					if c.mapperStatus[mapIndex] == 1 {
+						c.mapperStatus[mapIndex] = 0
+					}
+				}(i, c)
 				break
 			}
 		}
 	} else {
-		reply.JobType = "reducer"
 		for i, val := range c.reducerStatus {
 			if val == 0 {
+				reply.JobType = "reducer"
 				reply.ReducerIndex = i
 				reply.NMap = c.nMapper
+
 				c.reducerStatus[i] = 1
+				go func(reducerIndex int, c *Coordinator) {
+					time.Sleep(time.Second * 5)
+					c.mu.Lock()
+					defer c.mu.Unlock()
+
+					if c.reducerStatus[reducerIndex] == 1 {
+						c.reducerStatus[reducerIndex] = 0
+					}
+				}(i, c)
 				break
 			}
 		}
 	}
+	reply.ShouldWait = true
 	return nil
 }
 
